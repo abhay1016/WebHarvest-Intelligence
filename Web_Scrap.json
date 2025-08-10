@@ -1,0 +1,1001 @@
+{
+  "name": "Web-Scrap",
+  "nodes": [
+    {
+      "parameters": {
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.chatTrigger",
+      "typeVersion": 1.1,
+      "position": [
+        -440,
+        -80
+      ],
+      "id": "563840d2-452b-4af0-a80e-a45c90001a73",
+      "name": "When chat message received",
+      "webhookId": "4ed70790-4475-434e-b328-2b32469af7e4"
+    },
+    {
+      "parameters": {
+        "messages": {
+          "messageValues": [
+            {
+              "message": "=You are a URL normalization assistant. Your task is to convert any input URL into its standardized base URL format and return the result as JSON.\n\nNormalization Rules:\n\nEnsure the URL starts with https:// (add it if missing or replace http://).\n\nRemove www. unless it is essential for domain identity.\n\nRemove everything after the domain (paths, query strings, fragments).\n\nPreserve valid subdomains (e.g., blog.example.com → https://blog.example.com).\n\nConvert the domain part to lowercase.\n\nReturn the result strictly in the following  format like website name :\nExamples:\n\nInput: n8n.io/path/page\nOutput:\n         https://n8n.io\n\n\n\nInput: http://www.Example.COM/query=1\nOutput:\n\n  https://example.com\n\nInstructions:\n\nOnly and only Return only the website name like  https.google.com \n\nDo not include any additional text or explanation."
+            }
+          ]
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.chainLlm",
+      "typeVersion": 1.6,
+      "position": [
+        -260,
+        -80
+      ],
+      "id": "0db9a3b4-97e8-49d3-876a-e94187ead8b8",
+      "name": "Basic LLM Chain"
+    },
+    {
+      "parameters": {
+        "model": "gemma2-9b-it",
+        "options": {
+          "maxTokensToSample": 4096,
+          "temperature": 0.7
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatGroq",
+      "typeVersion": 1,
+      "position": [
+        -260,
+        160
+      ],
+      "id": "7953b22a-9ff1-470a-adc5-91cbe417ba84",
+      "name": "Groq Chat Model",
+      "credentials": {
+        "groqApi": {
+          "id": "rbvPIEFF9UBfUztX",
+          "name": "Groq account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "url": "={{ $json.text }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "User-Agent",
+              "value": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        100,
+        -80
+      ],
+      "id": "f9c35042-c9e9-4f8b-be27-09825b3cbe51",
+      "name": "HTTP Request"
+    },
+    {
+      "parameters": {
+        "jsCode": "const html = $input.first().json.data || '';\nconst baseUrl = $('Basic LLM Chain').first().json.text || 'https://www.thetaverncoffee.com';\n\n// Function to extract links using regex (supports unquoted href)\nfunction extractLinks(htmlContent) {\n  const linkRegex = /<a\\s+(?:[^>]*?\\s+)?href=(?:([\"'])(.*?)\\1|([^>\\s]+)(?=\\s|>))/gi;\n  const links = [];\n  let match;\n  while ((match = linkRegex.exec(htmlContent)) !== null) {\n    const href = match[2] || match[3]; // Match quoted or unquoted href\n    if (href && !href.startsWith('#') && !href.includes('mailto:') && !href.includes('javascript:')) {\n      links.push(href);\n    }\n  }\n  return links;\n}\n\n// Function to resolve relative URLs to absolute\nfunction resolveUrl(link, base) {\n  try {\n    // If link is already absolute, return it as-is\n    if (/^https?:\\/\\//i.test(link)) {\n      return link;\n    }\n    // Resolve relative URL\n    return new URL(link, base).href;\n  } catch (e) {\n    return { error: `Failed to resolve URL: ${link}`, original: link };\n  }\n}\n\n// Function to extract visible text (excluding scripts, styles, etc.)\nfunction extractVisibleText(htmlContent) {\n  let cleaned = htmlContent\n    .replace(/<script\\b[^<]*(?:(?!<\\/script>)<[^<]*)*<\\/script>/gi, '')\n    .replace(/<style\\b[^<]*(?:(?!<\\/style>)<[^<]*)*<\\/style>/gi, '')\n    .replace(/<!--[\\s\\S]*?-->/g, '');\n  \n  cleaned = cleaned\n    .replace(/<[^>]+>/g, ' ')\n    .replace(/\\s+/g, ' ')\n    .trim();\n  \n  return cleaned;\n}\n\n// Extract and clean links\nconst rawLinks = extractLinks(html);\nconst resolveResults = rawLinks.map(link => resolveUrl(link, baseUrl));\nconst cleanedLinks = resolveResults\n  .filter(result => typeof result === 'string') // Keep valid URLs\n  .filter((link, index, self) => self.indexOf(link) === index); // Remove duplicates\nconst resolveErrors = resolveResults\n  .filter(result => typeof result === 'object')\n  .map(result => result.error); // Log errors\n\n// Extract visible text\nconst visibleText = extractVisibleText(html);\n\n// Output\nreturn [{\n  json: {\n    links: cleanedLinks,\n    visible_text: visibleText,\n    raw_links: rawLinks,\n    debug_html_length: html.length,\n    debug_base_url: baseUrl,\n    debug_resolve_errors: resolveErrors\n  }\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        300,
+        -80
+      ],
+      "id": "7c31a71b-240c-42a5-94a3-422b79693f82",
+      "name": "Code"
+    },
+    {
+      "parameters": {
+        "options": {
+          "reset": ""
+        }
+      },
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 3,
+      "position": [
+        1060,
+        -80
+      ],
+      "id": "9249984f-8852-4ac5-8952-387e1d768a41",
+      "name": "Loop Over Items"
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "=You are a link relevance checker and social media handle extractor for web scraping. Your task is to analyze a list of links relative to a baseLink and return a valid JSON array of objects. Each object must contain:\\n\\n- `url`: the full link\\n- `scrape`: boolean (true/false based on relevance)\\n- `note`: short reason (e.g., 'Same domain and relevant', 'Platform link', 'External site')\\n\\nFor social media links, also include:\\n- `platform`: the platform name (e.g., 'Instagram', 'Twitter', 'Facebook', 'TikTok', 'LinkedIn')\\n- `username`: the handle extracted from the URL\\n\\n**Input**:\\n- baseLink: {{ $('Basic LLM Chain').item.json.text }}\\n- links: {{ $json.links }}\\n\\n**Rules**:\\n1. Exclude the baseLink itself from the output.\\n2. For same-domain or subdomain links with meaningful content (e.g., /about, /blog):\\n   - `scrape`: true\\n   - `note`: 'Same domain and relevant'\\n3. For social media links (Instagram, Facebook, TikTok, Twitter, LinkedIn, etc.):\\n   - `scrape`: false\\n   - `note`: 'Platform link'\\n   - Include `platform` and `username`\\n4. For map/location links (e.g., Google Maps) or external/irrelevant domains:\\n   - `scrape`: false\\n   - `note`: 'Map service' or 'External site'\\n5. Remove duplicate URLs, keeping the first occurrence.\\n6. Return ONLY the JSON array, with no extra text, explanations, comments, or formatting (e.g., no ```json, no **Explanation**).\\n\\n**Example Output**:\\n[\\n  {\\\"url\\\": \\\"https://example.com/about\\\", \\\"scrape\\\": true, \\\"note\\\": \\\"Same domain and relevant\\\"},\\n  {\\\"url\\\": \\\"https://x.com/user\\\", \\\"scrape\\\": false, \\\"note\\\": \\\"Platform link\\\", \\\"platform\\\": \\\"Twitter\\\", \\\"username\\\": \\\"user\\\"},\\n  {\\\"url\\\": \\\"https://goo.gl/maps/abc\\\", \\\"scrape\\\": false, \\\"note\\\": \\\"Map service\\\"}\\n]\\n\\nAnalyze the input links and return the JSON array.\""
+      },
+      "type": "@n8n/n8n-nodes-langchain.chainLlm",
+      "typeVersion": 1.6,
+      "position": [
+        560,
+        -80
+      ],
+      "id": "fe02b8c6-a735-4590-b653-3c11f46fc1d0",
+      "name": "Basic LLM Chain1"
+    },
+    {
+      "parameters": {
+        "model": "gemma2-9b-it",
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatGroq",
+      "typeVersion": 1,
+      "position": [
+        520,
+        100
+      ],
+      "id": "2fd53a48-2c66-4b4d-9cb1-64b0228d5d82",
+      "name": "Groq Chat Model1",
+      "credentials": {
+        "groqApi": {
+          "id": "rbvPIEFF9UBfUztX",
+          "name": "Groq account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Clean and parse the returned JSON string\nconst rawText =$input.first().json.text ;\n\n// Remove backticks and any \"```json\" formatting\nconst cleaned = rawText.replace(/```json|```/g, '').trim();\n\n// Parse it into a JSON object\nconst parsedLinks = JSON.parse(cleaned);\n\n// Return as individual items for looping\nreturn parsedLinks.map(link => ({ json: link }));"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        880,
+        -80
+      ],
+      "id": "7e5119ed-0907-4a4d-801d-ea1020accc8c",
+      "name": "Code1"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "bb9f10c5-b749-4044-ac38-d9d5c2a247d0",
+              "leftValue": "={{ $json.scrape }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        1120,
+        180
+      ],
+      "id": "de738f9c-2b19-4c24-8cbe-509ea2da4481",
+      "name": "If"
+    },
+    {
+      "parameters": {
+        "url": "={{ $json.url }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "User-Agent",
+              "value": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1480,
+        -40
+      ],
+      "id": "9260a772-bc0b-4fe1-836c-c054d2ceba3c",
+      "name": "HTTP Request2",
+      "retryOnFail": true
+    },
+    {
+      "parameters": {
+        "jsCode": "const html = $input.first().json.data || '';\nconst baseUrl = $('Basic LLM Chain').first().json.text || 'https://www.thetaverncoffee.com';\n\n// Function to extract links using regex (supports unquoted href)\nfunction extractLinks(htmlContent) {\n  const linkRegex = /<a\\s+(?:[^>]*?\\s+)?href=(?:([\"'])(.*?)\\1|([^>\\s]+)(?=\\s|>))/gi;\n  const links = [];\n  let match;\n  while ((match = linkRegex.exec(htmlContent)) !== null) {\n    const href = match[2] || match[3]; // Match quoted or unquoted href\n    if (href && !href.startsWith('#') && !href.includes('mailto:') && !href.includes('javascript:')) {\n      links.push(href);\n    }\n  }\n  return links;\n}\n\n// Function to resolve relative URLs to absolute\nfunction resolveUrl(link, base) {\n  try {\n    // If link is already absolute, return it as-is\n    if (/^https?:\\/\\//i.test(link)) {\n      return link;\n    }\n    // Resolve relative URL\n    return new URL(link, base).href;\n  } catch (e) {\n    return { error: `Failed to resolve URL: ${link}`, original: link };\n  }\n}\n\n// Function to extract visible text (excluding scripts, styles, etc.)\nfunction extractVisibleText(htmlContent) {\n  let cleaned = htmlContent\n    .replace(/<script\\b[^<]*(?:(?!<\\/script>)<[^<]*)*<\\/script>/gi, '')\n    .replace(/<style\\b[^<]*(?:(?!<\\/style>)<[^<]*)*<\\/style>/gi, '')\n    .replace(/<!--[\\s\\S]*?-->/g, '');\n  \n  cleaned = cleaned\n    .replace(/<[^>]+>/g, ' ')\n    .replace(/\\s+/g, ' ')\n    .trim();\n  \n  return cleaned;\n}\n\n// Extract and clean links\nconst rawLinks = extractLinks(html);\nconst resolveResults = rawLinks.map(link => resolveUrl(link, baseUrl));\nconst cleanedLinks = resolveResults\n  .filter(result => typeof result === 'string') // Keep valid URLs\n  .filter((link, index, self) => self.indexOf(link) === index); // Remove duplicates\nconst resolveErrors = resolveResults\n  .filter(result => typeof result === 'object')\n  .map(result => result.error); // Log errors\n\n// Extract visible text\nconst visibleText = extractVisibleText(html);\n\n// Output\nreturn [{\n  json: {\n    links: cleanedLinks,\n    visible_text: visibleText,\n    debug_base_url: baseUrl,\n    debug_resolve_errors: resolveErrors\n  }\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1700,
+        -40
+      ],
+      "id": "8a291d01-dbc8-4345-a8d7-cf9f31e939c4",
+      "name": "Code2"
+    },
+    {
+      "parameters": {
+        "operation": "append",
+        "documentId": {
+          "__rl": true,
+          "value": "1E4CLZ91JhMRlA_VIZfger7Kk7dxZF9Xvg4mEx-Vzt_8",
+          "mode": "list",
+          "cachedResultName": "Web-scrap",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1E4CLZ91JhMRlA_VIZfger7Kk7dxZF9Xvg4mEx-Vzt_8/edit?usp=drivesdk"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "gid=0",
+          "mode": "list",
+          "cachedResultName": "Web",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1E4CLZ91JhMRlA_VIZfger7Kk7dxZF9Xvg4mEx-Vzt_8/edit#gid=0"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "Websites": "={{ $('If').item.json.url }}",
+            "Datat": "={{ $json.visible_text }}",
+            "Other-Links": "={{ $json.links }}"
+          },
+          "matchingColumns": [],
+          "schema": [
+            {
+              "id": "Websites",
+              "displayName": "Websites",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Datat",
+              "displayName": "Datat",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Other-Links",
+              "displayName": "Other-Links",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.5,
+      "position": [
+        1900,
+        -40
+      ],
+      "id": "8d383520-7c36-47c7-a22f-20cadf86877b",
+      "name": "Google Sheets1",
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "MXzj0Ib1zdEcPdo1",
+          "name": "Google Sheets account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "append",
+        "documentId": {
+          "__rl": true,
+          "value": "1E4CLZ91JhMRlA_VIZfger7Kk7dxZF9Xvg4mEx-Vzt_8",
+          "mode": "list",
+          "cachedResultName": "Web-scrap",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1E4CLZ91JhMRlA_VIZfger7Kk7dxZF9Xvg4mEx-Vzt_8/edit?usp=drivesdk"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "gid=0",
+          "mode": "list",
+          "cachedResultName": "Web",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1E4CLZ91JhMRlA_VIZfger7Kk7dxZF9Xvg4mEx-Vzt_8/edit#gid=0"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "Websites": "={{ $('Basic LLM Chain').item.json.text }}",
+            "Datat": "={{ $json.visible_text }}",
+            "Other-Links": "={{ $json.links }}"
+          },
+          "matchingColumns": [],
+          "schema": [
+            {
+              "id": "Websites",
+              "displayName": "Websites",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Datat",
+              "displayName": "Datat",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Other-Links",
+              "displayName": "Other-Links",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.5,
+      "position": [
+        540,
+        -280
+      ],
+      "id": "39ff37f0-9eda-444d-bedf-99ceac34baf3",
+      "name": "Google Sheets2",
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "MXzj0Ib1zdEcPdo1",
+          "name": "Google Sheets account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// This returns a single item with a number value\nreturn [\n  {\n    json: {\n      number: 42\n    }\n  }\n];\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1260,
+        -100
+      ],
+      "id": "fbf1d3f7-57fd-4b1e-bfe1-2d58002f4fe1",
+      "name": "Code5"
+    },
+    {
+      "parameters": {
+        "documentId": {
+          "__rl": true,
+          "value": "1E4CLZ91JhMRlA_VIZfger7Kk7dxZF9Xvg4mEx-Vzt_8",
+          "mode": "list",
+          "cachedResultName": "Web-scrap",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1E4CLZ91JhMRlA_VIZfger7Kk7dxZF9Xvg4mEx-Vzt_8/edit?usp=drivesdk"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "gid=0",
+          "mode": "list",
+          "cachedResultName": "Web",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1E4CLZ91JhMRlA_VIZfger7Kk7dxZF9Xvg4mEx-Vzt_8/edit#gid=0"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.5,
+      "position": [
+        1400,
+        -280
+      ],
+      "id": "e146f941-de77-4ae9-b686-2fd6e4176db6",
+      "name": "Google Sheets",
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "MXzj0Ib1zdEcPdo1",
+          "name": "Google Sheets account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Get all rows from the Google Sheets node\nconst rows = $input.all();\n\n// Object to store link counts\nconst linkCounts = {};\n// Count of valid rows (row_number >= 2)\nlet validRowCount = 0;\n\n// Iterate over each row to collect links and count valid rows\nfor (let i = 0; i < rows.length; i++) {\n    const row = rows[i].json;\n    const rowNumber = row['row_number'];\n\n    // Skip row 1 (headers), assuming row_number starts at 2\n    if (rowNumber < 2) continue;\n\n    // Increment valid row count\n    validRowCount++;\n\n    // Get the \"Other-Links\" value (JSON string)\n    const otherLinksJson = row['Other-Links'];\n\n    // Check if Other-Links exists and is not empty\n    if (otherLinksJson) {\n        try {\n            // Parse the JSON string into an array\n            const links = JSON.parse(otherLinksJson);\n\n            // Ensure it's an array and count each link\n            if (Array.isArray(links)) {\n                links.forEach(link => {\n                    if (link) { // Skip empty or null links\n                        // Increment count for this link\n                        linkCounts[link] = (linkCounts[link] || 0) + 1;\n                    }\n                });\n            }\n        } catch (error) {\n            // Log parsing errors but continue processing other rows\n            console.log(`Error parsing Other-Links for row ${rowNumber}: ${error.message}`);\n        }\n    }\n}\n\n// Filter links that do not appear in every valid row\nconst nonCommonLinks = Object.keys(linkCounts).filter(\n    link => linkCounts[link] < validRowCount\n);\n\n// Return non-common links as a single item with an array\nreturn [{ json: { nonCommonLinks } }];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1600,
+        -280
+      ],
+      "id": "a13f0053-27a9-4e05-a2d3-ee5d8651a99f",
+      "name": "Code3"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Get the links array from the input\nconst links = $input.first().json.nonCommonLinks || [];\n\n// Remove duplicates using a Set\nconst uniqueLinks = [...new Set(links)];\n\n// Return unique links as a single item\nreturn [{ json: { uniqueLinks } }];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1800,
+        -280
+      ],
+      "id": "83e246ae-7998-4864-8fa8-9f6e95302cb7",
+      "name": "Code4"
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "=You are a link relevance checker and social media handle extractor for web scraping. Your task is to analyze a list of links relative to a baseLink and return a valid JSON array of objects. Each object must contain:\\n\\n- `url`: the full link\\n- `scrape`: boolean (true/false based on relevance)\\n- `note`: short reason (e.g., 'Contain name ofcompany name  and relevant in website link ', 'Platform link', 'External site')\\n\\nFor social media links, also include:\\n- `platform`: the platform name (e.g., 'Instagram', 'Twitter', 'Facebook', 'TikTok', 'LinkedIn')\\n- `username`: the handle extracted from the URL\\n\\n**Input**:\\n- baseLink:: can be found through links that do not have any paths or query, only the website name in {{ $json.uniqueLinks }}; if not present, determine the base website using your knowledge of website link structures \\n- links:{{ $json.uniqueLinks }} \\n\\n**Rules**:\\n1. Exclude the baseLink itself from the output.\\n2. For same-domain or subdomain and name of company present in  links will be scraped (e.g., about, blog,privacy policy,carrers and more):\\n   - `scrape`: true\\n   - `note`: 'Same domain and relevant and name of company present in  links'\\n3. For social media links (Instagram, Facebook, TikTok, Twitter, LinkedIn, etc.):\\n   - `scrape`: false\\n   - `note`: 'Platform link'\\n   - Include `platform` and `username`\\n4. For map/location links (e.g., Google Maps) or external/irrelevant domains:\\n   - `scrape`: false\\n   - `note`: 'Map service' or 'External site'\\n5. Remove duplicate URLs, keeping the first occurrence.\\n6. Return ONLY the JSON array, with no extra text, explanations, comments, or formatting (e.g., no ```json, no **Explanation**).\\n\\n**Example Output**:\\n[\\n  {\\\"url\\\": \\\"https://example.com/about\\\", \\\"scrape\\\": true, \\\"note\\\": \\\"Same domain and relevant\\\"},\\n  {\\\"url\\\": \\\"https://x.com/user\\\", \\\"scrape\\\": false, \\\"note\\\": \\\"Platform link\\\", \\\"platform\\\": \\\"Twitter\\\", \\\"username\\\": \\\"user\\\"},\\n  {\\\"url\\\": \\\"https://goo.gl/maps/abc\\\", \\\"scrape\\\": false, \\\"note\\\": \\\"Map service\\\"}\\n]\\n\\nAnalyze the input links and return the JSON array.\""
+      },
+      "type": "@n8n/n8n-nodes-langchain.chainLlm",
+      "typeVersion": 1.6,
+      "position": [
+        1940,
+        -280
+      ],
+      "id": "d32789b9-5690-4d70-a6a6-5c28e6745992",
+      "name": "Basic LLM Chain2"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Clean and parse the returned JSON string\nconst rawText = $input.first().json.text;\n\n// Remove backticks and any \"```json\" formatting\nconst cleaned = rawText.replace(/```json|```/g, '').trim();\n\n// Parse it into a JSON object\nconst parsedLinks = JSON.parse(cleaned);\n\n// Return as individual items for looping\nreturn parsedLinks.map(link => ({ json: link }));"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2280,
+        -280
+      ],
+      "id": "9579aaa9-acb1-4b07-a165-c52e3b19a781",
+      "name": "Code6"
+    },
+    {
+      "parameters": {
+        "options": {
+          "reset": ""
+        }
+      },
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 3,
+      "position": [
+        2460,
+        -280
+      ],
+      "id": "4b3477dc-b0ee-456f-9c0d-06b8b9a37ba4",
+      "name": "Loop Over Items1"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "bb9f10c5-b749-4044-ac38-d9d5c2a247d0",
+              "leftValue": "={{ $json.scrape }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        2600,
+        -160
+      ],
+      "id": "f4cce758-49c9-40ef-96c8-0015073335b4",
+      "name": "If1"
+    },
+    {
+      "parameters": {
+        "url": "={{ $json.url }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "User-Agent",
+              "value": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        2880,
+        -340
+      ],
+      "id": "35c273aa-bb00-4f0c-b9a5-15e18b42b8d2",
+      "name": "HTTP Request3",
+      "retryOnFail": true
+    },
+    {
+      "parameters": {
+        "jsCode": "const html = $input.first().json.data || '';\nconst baseUrl = $('Basic LLM Chain').first().json.text || 'https://www.thetaverncoffee.com';\n\n// Function to extract links using regex (supports unquoted href)\nfunction extractLinks(htmlContent) {\n  const linkRegex = /<a\\s+(?:[^>]*?\\s+)?href=(?:([\"'])(.*?)\\1|([^>\\s]+)(?=\\s|>))/gi;\n  const links = [];\n  let match;\n  while ((match = linkRegex.exec(htmlContent)) !== null) {\n    const href = match[2] || match[3]; // Match quoted or unquoted href\n    if (href && !href.startsWith('#') && !href.includes('mailto:') && !href.includes('javascript:')) {\n      links.push(href);\n    }\n  }\n  return links;\n}\n\n// Function to resolve relative URLs to absolute\nfunction resolveUrl(link, base) {\n  try {\n    // If link is already absolute, return it as-is\n    if (/^https?:\\/\\//i.test(link)) {\n      return link;\n    }\n    // Resolve relative URL\n    return new URL(link, base).href;\n  } catch (e) {\n    return { error: `Failed to resolve URL: ${link}`, original: link };\n  }\n}\n\n// Function to extract visible text (excluding scripts, styles, etc.)\nfunction extractVisibleText(htmlContent) {\n  let cleaned = htmlContent\n    .replace(/<script\\b[^<]*(?:(?!<\\/script>)<[^<]*)*<\\/script>/gi, '')\n    .replace(/<style\\b[^<]*(?:(?!<\\/style>)<[^<]*)*<\\/style>/gi, '')\n    .replace(/<!--[\\s\\S]*?-->/g, '');\n  \n  cleaned = cleaned\n    .replace(/<[^>]+>/g, ' ')\n    .replace(/\\s+/g, ' ')\n    .trim();\n  \n  return cleaned;\n}\n\n// Extract and clean links\nconst rawLinks = extractLinks(html);\nconst resolveResults = rawLinks.map(link => resolveUrl(link, baseUrl));\nconst cleanedLinks = resolveResults\n  .filter(result => typeof result === 'string') // Keep valid URLs\n  .filter((link, index, self) => self.indexOf(link) === index); // Remove duplicates\nconst resolveErrors = resolveResults\n  .filter(result => typeof result === 'object')\n  .map(result => result.error); // Log errors\n\n// Extract visible text\nconst visibleText = extractVisibleText(html);\n\n// Output\nreturn [{\n  json: {\n    links: cleanedLinks,\n    visible_text: visibleText,\n    debug_base_url: baseUrl,\n    debug_resolve_errors: resolveErrors\n  }\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        3060,
+        -340
+      ],
+      "id": "829cfeeb-66c4-490a-9ae3-cc01ef3bc774",
+      "name": "Code7"
+    },
+    {
+      "parameters": {
+        "operation": "append",
+        "documentId": {
+          "__rl": true,
+          "value": "1E4CLZ91JhMRlA_VIZfger7Kk7dxZF9Xvg4mEx-Vzt_8",
+          "mode": "list",
+          "cachedResultName": "Web-scrap",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1E4CLZ91JhMRlA_VIZfger7Kk7dxZF9Xvg4mEx-Vzt_8/edit?usp=drivesdk"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "gid=0",
+          "mode": "list",
+          "cachedResultName": "Web",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1E4CLZ91JhMRlA_VIZfger7Kk7dxZF9Xvg4mEx-Vzt_8/edit#gid=0"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "Websites": "={{ $('If1').item.json.url }}",
+            "Datat": "={{ $json.visible_text }}",
+            "Other-Links": "={{ $json.links }}"
+          },
+          "matchingColumns": [],
+          "schema": [
+            {
+              "id": "Websites",
+              "displayName": "Websites",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Datat",
+              "displayName": "Datat",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Other-Links",
+              "displayName": "Other-Links",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.5,
+      "position": [
+        3240,
+        -340
+      ],
+      "id": "58200112-092c-4244-96ef-ae80fd44cf58",
+      "name": "Google Sheets3",
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "MXzj0Ib1zdEcPdo1",
+          "name": "Google Sheets account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// This returns a single item with a number value\nreturn [\n  {\n    json: {\n      number: \"Done Scraping\"\n    }\n  }\n];\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2620,
+        -420
+      ],
+      "id": "4bd3d545-b5d9-46ce-9009-a4044c26fecc",
+      "name": "Code8"
+    },
+    {
+      "parameters": {
+        "model": "amazon.nova-micro-v1:0",
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatAwsBedrock",
+      "typeVersion": 1,
+      "position": [
+        2120,
+        -100
+      ],
+      "id": "679c6234-24b1-489e-9caa-09a9a40a6060",
+      "name": "AWS Bedrock Chat Model",
+      "credentials": {
+        "aws": {
+          "id": "6T2xvOK3N6VS10Dj",
+          "name": "AWS account"
+        }
+      }
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "When chat message received": {
+      "main": [
+        [
+          {
+            "node": "Basic LLM Chain",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Groq Chat Model": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "Basic LLM Chain",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Basic LLM Chain": {
+      "main": [
+        [
+          {
+            "node": "HTTP Request",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HTTP Request": {
+      "main": [
+        [
+          {
+            "node": "Code",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code": {
+      "main": [
+        [
+          {
+            "node": "Basic LLM Chain1",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Google Sheets2",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Loop Over Items": {
+      "main": [
+        [
+          {
+            "node": "Code5",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "If",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Groq Chat Model1": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "Basic LLM Chain1",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Basic LLM Chain1": {
+      "main": [
+        [
+          {
+            "node": "Code1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code1": {
+      "main": [
+        [
+          {
+            "node": "Loop Over Items",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "If": {
+      "main": [
+        [
+          {
+            "node": "HTTP Request2",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Loop Over Items",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HTTP Request2": {
+      "main": [
+        [
+          {
+            "node": "Code2",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code2": {
+      "main": [
+        [
+          {
+            "node": "Google Sheets1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Google Sheets1": {
+      "main": [
+        [
+          {
+            "node": "Loop Over Items",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code5": {
+      "main": [
+        [
+          {
+            "node": "Google Sheets",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Google Sheets": {
+      "main": [
+        [
+          {
+            "node": "Code3",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code3": {
+      "main": [
+        [
+          {
+            "node": "Code4",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code4": {
+      "main": [
+        [
+          {
+            "node": "Basic LLM Chain2",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Basic LLM Chain2": {
+      "main": [
+        [
+          {
+            "node": "Code6",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Loop Over Items1": {
+      "main": [
+        [
+          {
+            "node": "Code8",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "If1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "If1": {
+      "main": [
+        [
+          {
+            "node": "HTTP Request3",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Loop Over Items1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HTTP Request3": {
+      "main": [
+        [
+          {
+            "node": "Code7",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code7": {
+      "main": [
+        [
+          {
+            "node": "Google Sheets3",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Google Sheets3": {
+      "main": [
+        [
+          {
+            "node": "Loop Over Items1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code6": {
+      "main": [
+        [
+          {
+            "node": "Loop Over Items1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "AWS Bedrock Chat Model": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "Basic LLM Chain2",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "1afa4c58-abaa-4b2c-a928-785d0aaef9ee",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "56488f7ae4747a9f3ce09683c4c0551939170e3869a4910a27cef2250c1512f4"
+  },
+  "id": "OGBP2RP8JLw1Kx8Y",
+  "tags": []
+}
